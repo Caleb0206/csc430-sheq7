@@ -66,7 +66,7 @@
                       (list 'equal? (PrimV 'equal?))
                       (list 'substring (PrimV 'substring))
                       (list 'strlen (PrimV 'strlen))
-                      (list 'error (PrimV 'error))
+                      ; (list 'error (PrimV 'error))
                       (list 'println (PrimV 'println))
                       (list 'read-num (PrimV 'read-num))
                       (list 'read-str (PrimV 'read-str))
@@ -77,13 +77,13 @@
                       (list 'aset! (PrimV 'aset!)))) 
 
 ;; reserved-keywords - a list of key-words
-(define reserved-keywords '(if lambda let = in end : :=))
+(define reserved-keywords '(if lambda let = in end : := rlet ->))
 
 ;; ---- Interpreters ----
 
 ;; top-interp - Parse and evaluate the S-exp, return a serialized String result
-(define (top-interp [s : Sexp] [memsize : Natural]) : String
-  (define store (make-initial-store memsize))
+(define (top-interp [s : Sexp]) : String
+  (define store (make-initial-store 2000))
   (define env (make-default-env store))
   (serialize (interp (parse s) env store)))
 
@@ -224,7 +224,7 @@
             (error 'interp-prim "SHEQ: Syntax error, ~a is not a string" s))]
        [_ (error 'interp-prim "SHEQ: strlen received incorrect number of arguments, expected 1, got ~a"
                  (length args))])]
-    ['error
+    #; ['error
      (match args
        [(list v)
         (error 'interp-prim "SHEQ: user-error ~a" (serialize v))]
@@ -529,9 +529,9 @@
                  end})
 
 ;; Test for while (commented out for Handin)
-; (check-equal? (top-interp while 100) "3")
+; (check-equal? (top-interp while) "3")
 
-(check-equal? (top-interp while 200) "#<procedure>")
+(check-equal? (top-interp while) "#<procedure>")
 
 
 
@@ -574,8 +574,8 @@
      end})
 
 ;; Test for in-order (commented out for Handin)
-; (check-equal? (top-interp in-order 599) "true")
-(check-equal? (top-interp in-order 200) "#<procedure>")
+; (check-equal? (top-interp in-order) "true")
+(check-equal? (top-interp in-order) "#<procedure>")
 
 
 ;; Large test
@@ -589,14 +589,14 @@
                 in
                 {gt {square 4} {area 4 3} 0 1}
                 end})
-(check-equal? (top-interp prog 100) "0")
+(check-equal? (top-interp prog) "0")
 
 ;; ---- top-interp Tests ----
-(check-equal? (top-interp '{+ 3 2} 100) "5")
-(check-equal? (top-interp '{if {<= 5 100} "less than" "not less than"} 10) "\"less than\"")
+(check-equal? (top-interp '{+ 3 2}) "5")
+(check-equal? (top-interp '{if {<= 5 100} "less than" "not less than"}) "\"less than\"")
 
 ;; - substring test - from handin server tests
-(check-equal? (top-interp '{equal? (substring (substring "abcd" 1 4) 1 3) "cd"} 1000) "true")
+(check-equal? (top-interp '{equal? (substring (substring "abcd" 1 4) 1 3) "cd"}) "true")
 
 (check-equal? (top-interp 
                '{let {[x = 5]
@@ -606,8 +606,7 @@
                               in
                               {+ x x}
                               end}}}
-                  end}
-               100) "107")
+                  end}) "107")
 
 ;; - top-interp seq test
 (check-equal? (top-interp '{seq
@@ -618,15 +617,14 @@
                             {let ([x = 2])
                               in
                               {* 2 x}
-                              end}}
-                          100) "4")
+                              end}}) "4")
 
 ;; - top-interp with arrays
 (check-equal? (top-interp '{let ([arr1 = {make-array 5 0}]
                                  [arr2 = {array 0 0 0 0 0}])
                              in
                              {equal? arr1 arr2}
-                             end} 100) "false")
+                             end}) "false")
 
 (check-equal? (top-interp '{let ([arr3 = {make-array 5 0}]
                                  [f = {lambda (x) : {* x 2}}])
@@ -634,7 +632,7 @@
                              {seq
                               {aset! arr3 0 {f 10}}
                               {aref arr3 0}}
-                             end} 100) "20")
+                             end}) "20")
 
 ;; - top-interp with mutations
 
@@ -643,27 +641,25 @@
                              {seq
                               {x := "changed"}
                               x}
-                             end} 15)
-              "\"changed\"")
+                             end})  "\"changed\"")
 
 (check-equal? (top-interp '{let {[fact = "bogus"]}
                              in
                              {seq
                               {fact := {lambda {x} : {if {equal? x 0} 1 {* x {fact {- x 1}}}}}}
                               {fact 2}}
-                             end} 100) "2")
+                             end}) "2")
 
 
 
 ;; - incorect num of arguments (from handin)
 (check-exn #rx"SHEQ: Incorrect number of arguments for CloV"
-           (lambda () (top-interp '{{lambda () : 19} 17} 100)))
+           (lambda () (top-interp '{{lambda () : 19} 17})))
 
 ;; - divide by zero error test case (from handin)
 (check-exn #rx"SHEQ: Divide by zero error"
            (lambda () (top-interp
-                       '{{lambda (ignoreit) : {ignoreit {/ 52 {+ 0 0}}}} {lambda (x) : {+ 7 x}}}
-                       100)))
+                       '{{lambda (ignoreit) : {ignoreit {/ 52 {+ 0 0}}}} {lambda (x) : {+ 7 x}}})))
 
 ;; ---- interp tests ----
 (define make-test-store (lambda () (make-initial-store 100))) ; (make-test-store) is a store for the tests below
@@ -748,7 +744,7 @@
 (check-equal? (serialize (ArrayV 2 12)) "#<array>")
 (check-equal? (serialize (NullV)) "null")
 
-(check-exn #rx"SHEQ: user-error true" (lambda () (interp-prim (PrimV 'error) (list #t) (make-test-store))))
+; (check-exn #rx"SHEQ: user-error true" (lambda () (interp-prim (PrimV 'error) (list #t) (make-test-store))))
 
 
 ;; ---- parse Tests ----
@@ -887,7 +883,7 @@
            (lambda () (interp-prim (PrimV 'strlen) (list "bib" "five" 3) (make-test-store))))
 
 ;; PrimV 'error test
-(check-exn #rx"SHEQ: error received incorrect number of arguments, expected 1"
+#; (check-exn #rx"SHEQ: error received incorrect number of arguments, expected 1"
            (lambda () (interp-prim (PrimV 'error) (list "This" "too many") (make-test-store))))
 
 ;; PrimV invalid PrimV test
@@ -1039,15 +1035,15 @@
                (Binding 'equal? 8)
                (Binding 'substring 9)
                (Binding 'strlen 10)
-               (Binding 'error 11)
-               (Binding 'println 12)
-               (Binding 'read-num 13)
-               (Binding 'read-str 14)
-               (Binding '++ 15)
-               (Binding 'make-array 16)
-               (Binding 'array 17)
-               (Binding 'aref 18)
-               (Binding 'aset! 19)))
+               #;(Binding 'error 11)
+               (Binding 'println 11)
+               (Binding 'read-num 12)
+               (Binding 'read-str 13)
+               (Binding '++ 14)
+               (Binding 'make-array 15)
+               (Binding 'array 16)
+               (Binding 'aref 17)
+               (Binding 'aset! 18)))
 
 
 ;; get-binding tests
