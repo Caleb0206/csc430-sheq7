@@ -54,6 +54,77 @@
 ;; NullC : Null
 (struct NullC () #:transparent)
 
+;; Types - Number, Boolean, String, Array of Integers, Functions
+(define-type Type (U NumT BoolT StrT IntArrayT FunT))
+
+;; NumT - Number type
+(struct NumT () #:transparent)
+
+;; BoolT - Boolean type
+(struct BoolT () #:transparent)
+
+;; StrT - String type
+(struct StrT () #:transparent)
+
+;; IntArrayT - Integer Array type
+(struct IntArrayT () #:transparent)
+
+;; FunT - Function type with arguments and return types
+(struct FunT ([args : (Listof Type)] [return : Type]) #:transparent)
+
+;; parse-type
+(define (parse-type [s : Sexp]) : Type
+  (match s
+    ['num (NumT)]
+    ['bool (BoolT)]
+    ['str (StrT)]
+    ['intarray (IntArrayT)]
+
+    ; (list (list (? symbol? args) '= vals) ...)
+    [(list args ... '-> return)
+     (FunT (map parse-type (cast args (Listof Sexp))) (parse-type return))]
+    [_ (error 'parse-type "SHEQ: invalid type syntax ~a" s)]))
+
+(check-equal? (parse-type 'num) (NumT))
+(check-equal? (parse-type 'bool) (BoolT))
+(check-equal? (parse-type 'str) (StrT))
+(check-equal? (parse-type 'intarray) (IntArrayT))
+(check-equal? (parse-type '{num str -> bool}) (FunT (list (NumT) (StrT)) (BoolT)))
+(check-exn #rx"SHEQ: invalid type syntax" (lambda () (parse-type 22)))
+
+;; TypeBinding - a binding of a Symbol and a Type
+(struct TypeBinding ([name : Symbol] [ty : Type]) #:transparent)
+
+;; TypeEnv - a list of TypeBindings
+(define-type TypeEnv (Listof TypeBinding))
+
+;; type-check - takes an ExprC and TypeEnv, returns the ExprC's Type
+(define (type-check [e : ExprC] [tenv : TypeEnv]) : Type
+  (match e
+    [(NumC _) (NumT)]
+    [(StringC _) (StrT)]
+    [(IdC name) (lookup-type name tenv)]))
+
+
+;; lookup-type - takes and symbol and a TypeEnv, returns the symbol's type through search in TypeEnv
+(define (lookup-type [id : Symbol] [tenv : TypeEnv]) : Type
+  (match tenv
+    ['() (error 'lookup-type "SHEQ: An unbound identifier ~a in env ~e" id tenv)]
+    [(cons (TypeBinding name type) r)
+     (if (equal? id name)
+         type
+         (lookup-type id r))]))
+
+;; lookup-type tests
+(check-equal? (lookup-type 'x (list (TypeBinding 'x (BoolT)))) (BoolT))
+(check-exn #rx"SHEQ: An unbound identifier " (lambda () (lookup-type 'x (list (TypeBinding 'str (StrT))))))
+
+;; type-check tests
+(check-equal? (type-check (NumC 5) (list (TypeBinding 'num (NumT)))) (NumT))
+(check-equal? (type-check (StringC "ha") '()) (StrT))
+(check-equal? (type-check (IdC 'z) (list (TypeBinding 'yes? (BoolT)) (TypeBinding 'z (NumT)))) (NumT))
+
+
 ;; Top level environment definitions
 (define top-env-defs (list
                       (list 'true #t)
@@ -428,7 +499,7 @@
 
 ;; ---- Helper functions ----
 
-;; get-binding takes a symbol and enviornment, performs a lookup and returns an ExprC if found
+;; get-binding takes a symbol and enviornment, performs a lookup and returns a Natural index if found
 (define (get-binding [s : Symbol] [env : Env]) : Natural
   (match env
     ['() (error 'get-binding "SHEQ: An unbound identifier ~a in env ~e" s env)]
