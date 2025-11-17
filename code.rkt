@@ -31,7 +31,7 @@
 (define-type Env (Listof Binding))
 
 ;; ExprC type : NumC, IfC, IdC, AppC, LamC, StringC, MutateC, NullC
-(define-type ExprC (U NumC IfC IdC AppC LamC StringC MutateC NullC))
+(define-type ExprC (U NumC IfC IdC AppC LamC StringC MutateC NullC RecC))
 
 ;; NumC : a Real
 (struct NumC ([n : Real]) #:transparent)
@@ -50,6 +50,9 @@
 
 ;; MutateC : A mutation of symbol id to an ExprC expr
 (struct MutateC ([id : Symbol] [expr : ExprC]) #:transparent)
+
+;; RecC : A recursive let on id of type ty, assigned to with a, and used in expr
+(struct RecC ([ty : Type] [id : Symbol] [a : ExprC] [expr : ExprC]) #:transparent)
 
 ;; NullC : Null
 (struct NullC () #:transparent)
@@ -161,6 +164,13 @@
     [(NullC) (NullV)]
     [(MutateC id expr) 
      (store-set! id (interp expr env store) env store)]
+	[(RecC _ id a expr) 
+	 ; Create binding for id with value NullV
+	 (define extended-env (append (list (Binding id (allocate store (NullV)))) env))
+	 ; Update store value with interped value of a in extended env
+	 (store-set! id (interp a extended-env store) extended-env store)
+	 ; Interp expr in the new environment
+	 (interp expr extended-env store)]
     [(IfC v if-t if-f)
      (define test-val (interp v env store))
      (cond
@@ -414,6 +424,13 @@
     [(MutateC id expr) (type-check expr tenv)]
     ;; IdC -> type of IdC
     [(IdC name) (get-type-binding name tenv)]
+	;; RecC -> type of expr
+	[(RecC ty id a expr) 
+	 (define extended-tenv (append (list (TypeBinding id ty)) tenv))
+	 (define a-ty (type-check a extended-tenv))
+	 (if (equal? a-ty ty)
+		 (type-check expr extended-tenv)
+		 (error 'typecheck "SHEQ: rlet ~a has mismatched type ~a expected ~a" id a-ty ty))]
     ;; IfC -> type of then/else branches
     [(IfC v then else)
      (define cond-type (type-check v tenv))
@@ -508,6 +525,13 @@
               (LamC args-list types (parse in-body)) 
               (for/list : (Listof ExprC) ([v vals]) 
                 (parse (cast v Sexp))))])]
+	;; Match Rlet
+	[(list 'rlet (list (list 
+						 ty 
+						 (? symbol? id)
+						 '=
+						 a)) 'in expr 'end)
+	  (RecC (parse-type ty) id (parse a) (parse expr))]
     ;; Match If
     [(list 'if v iftrue iffalse)
      (IfC (parse v) (parse iftrue) (parse  iffalse))]
@@ -805,6 +829,11 @@
                        '{{lambda ([{num -> num} ignoreit]) : {ignoreit {/ 52 {+ 0 0}}}}
                          {lambda ([num x]) : {+ 7 x}}})))
 
+;; - rlet tests
+(check-equal? (top-interp '{rlet {[{num -> num} fact = {lambda {[num n]} : {if {<= n 1} 1 {* n {fact {- n 1}}}}}]} in {fact 5} end}) "120")
+;; - rlet incorrect typing
+(check-exn #rx"SHEQ: rlet" (lambda () (top-interp '{rlet {[{num -> num} f = "hi :)"]} in {+ 1 1} end})))
+
 ;; ---- interp tests ----
 (define make-test-store (lambda () (make-initial-store 100))) ; (make-test-store) is a store for the tests below
 
@@ -850,7 +879,6 @@
 ;; interp with seq
 (check-exn #rx"SHEQ: seq needs at least 1 expression."
            (lambda () (test-interp (AppC (IdC 'seq) '()))))
-
 
 ;; ---- interp error check ---- 
 (check-exn #rx"SHEQ: An unbound identifier" (lambda () (test-interp (IdC 'x))))
@@ -1287,4 +1315,5 @@
 ;; get-type-binding tests
 (check-equal? (get-type-binding 'x (list (TypeBinding 'x (BoolT)))) (BoolT))
 (check-exn #rx"SHEQ: An unbound identifier " (lambda () (get-type-binding 'x (list (TypeBinding 'str (StrT))))))
+
 
