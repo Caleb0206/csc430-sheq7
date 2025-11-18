@@ -2,7 +2,7 @@
 (require typed/rackunit)
 
 ;; SHEQ7
-;; Status message
+;; Fully implemented SHEQ7.
 
 ;; Data definitions
 
@@ -455,11 +455,15 @@
      (define f-type (type-check f tenv))
      (match f-type
        [(FunT params ret)
-        ; loop through ExprC args and Type args list, check to see they are equal
-        (for ([arg args] [param params])
-          (define a-type (type-check arg tenv))
-          (unless (equal? a-type param)
-             (error 'typecheck "SHEQ: argument type mismatch, expected ~a got ~a" param a-type)))
+        (cond
+          [(not (equal? (length params) (length args)))
+           (error 'type-check "SHEQ: wrong number of arguments, got ~a expected ~a" (length args) (length params))]
+          [else
+           ; loop through ExprC args and Type args list, check to see they are equal
+           (for ([arg args] [param params])
+             (define a-type (type-check arg tenv))
+             (unless (equal? a-type param)
+               (error 'typecheck "SHEQ: argument type mismatch, expected ~a got ~a" param a-type)))])
         ret]
        [else  (error 'typecheck "SHEQ: attempt call to non-function value of type ~a" f-type)])]
     ;; LamC -> FunT
@@ -819,8 +823,10 @@
 
 
 
+
+
 ;; - incorect num of arguments (from handin)
-(check-exn #rx"SHEQ: Incorrect number of arguments for CloV"
+(check-exn #rx"SHEQ: wrong number of arguments"
            (lambda () (top-interp '{{lambda () : 19} 17})))
 
 ;; - divide by zero error test case (from handin)
@@ -830,7 +836,11 @@
                          {lambda ([num x]) : {+ 7 x}}})))
 
 ;; - rlet tests
-(check-equal? (top-interp '{rlet {[{num -> num} fact = {lambda {[num n]} : {if {<= n 1} 1 {* n {fact {- n 1}}}}}]} in {fact 5} end}) "120")
+(check-equal? (top-interp
+               '{rlet {[{num -> num} fact = {lambda {[num n]} : {if {<= n 1} 1 {* n {fact {- n 1}}}}}]}
+                      in
+                      {fact 5}
+                      end}) "120")
 ;; - rlet incorrect typing
 (check-exn #rx"SHEQ: rlet" (lambda () (top-interp '{rlet {[{num -> num} f = "hi :)"]} in {+ 1 1} end})))
 
@@ -880,7 +890,13 @@
 (check-exn #rx"SHEQ: seq needs at least 1 expression."
            (lambda () (test-interp (AppC (IdC 'seq) '()))))
 
-;; ---- interp error check ---- 
+;; ---- interp error check ----
+(check-exn #rx"SHEQ: Incorrect number of arguments for CloV"
+           (lambda () (test-interp (AppC
+                                    (LamC '(x y) (list (NumT) (NumT))
+                                          (AppC (IdC '+) (list (IdC 'x) (IdC 'y))))
+                                    (list (NumC 3))))))
+
 (check-exn #rx"SHEQ: An unbound identifier" (lambda () (test-interp (IdC 'x))))
 
 (check-exn #rx"SHEQ: PrimV \\+ expected 2 numbers"
@@ -937,8 +953,12 @@
 (check-equal? (type-check (LamC (list 'x) (list (NumT)) (NumC 0)) '())
               (FunT (list (NumT)) (NumT)))
 
+;; - checks arity 
+(check-exn #rx"SHEQ: wrong number of arguments"
+           (lambda () (type-check (parse '{{lambda ([num a] [num b] [num c]) : 14} 3 4}) base-tenv)))
 
-(check-exn #rx"SHEQ: seq needs at least 1 expression" (lambda () (type-check (AppC (IdC 'seq) '()) base-tenv)))
+(check-exn #rx"SHEQ: seq needs at least 1 expression"
+           (lambda () (type-check (AppC (IdC 'seq) '()) base-tenv)))
 
 (check-exn #rx"SHEQ: argument type mismatch"
            (lambda () (type-check (AppC (IdC '+) (list (IdC 'x) (IdC 's)))
