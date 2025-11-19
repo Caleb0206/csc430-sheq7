@@ -134,14 +134,17 @@
 
 ;; top-interp - Parse and evaluate the S-exp, return a serialized String result
 (define (top-interp [s : Sexp]) : String
+  ;; parse s-exp into AST
   (define expr (parse s))
   
-  ;; type-checks here
+  ;; type-checks AST here
   (type-check expr base-tenv)
   
-  ;; interp continues 
+  ;; interp AST 
   (define store (make-initial-store 2000))
   (define env (make-default-env store))
+
+  ;; serialize
   (serialize (interp expr env store)))
 
 ;; interp - takes the complete AST (ExprC) with an Env, returning a Value
@@ -409,10 +412,6 @@
      (error 'interp-prim "SHEQ: Invalid PrimV op, got ~a" p)]))
 
 ;; ---- Type Checker ----
-;; type-check-top
-(define (type-check-top [s : Sexp]) : Type
-  (define expr (parse s))
-  (type-check expr base-tenv))
 
 ;; type-check - takes an ExprC and TypeEnv, returns the ExprC's Type
 (define (type-check [e : ExprC] [tenv : TypeEnv]) : Type
@@ -857,13 +856,6 @@
 (check-equal? (serialize (NullV)) "null")
 
 ;; ------- TYPE CHECKER TESTS -------
-
-;; type-check-top tests
-(check-equal? (type-check-top '{+ 3 4}) (NumT))
-(check-equal? (type-check-top '{<= 3 4}) (BoolT))
-(check-equal? (type-check-top '{lambda ([num x]) : {* x 10}})
-              (FunT (list (NumT)) (NumT)))
-
 
 ;; type-check tests 
 
