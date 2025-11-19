@@ -30,7 +30,7 @@
 ;; Env : a list of Bindings
 (define-type Env (Listof Binding))
 
-;; ExprC type : NumC, IfC, IdC, AppC, LamC, StringC, MutateC, NullC
+;; ExprC type : NumC, IfC, IdC, AppC, LamC, StringC, MutateC, NullC, RecC
 (define-type ExprC (U NumC IfC IdC AppC LamC StringC MutateC NullC RecC))
 
 ;; NumC : a Real
