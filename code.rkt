@@ -148,14 +148,15 @@
 (define (interp [e : ExprC] [env : Env] [store : (Vectorof Value)]) : Value
   ; template
   #;(match e
-      [numc -> number]
-      [stringc -> s]
-      [nullC -> nullV]
-      [mutatec -> nullv]
-      [ifc -> eval if expr]
+      [NumC -> number]
+      [StringC -> s]
+      [NullC -> nullV]
+      [MutateC -> nullv]
+      [RecC -> interp expr]
+      [Ifc -> eval if expr]
       [LamC -> CloV params body env]
       [AppC -> interp CloV or PrimV]
-      [Idc -> get binding])
+      [IdC -> get binding])
 
   ; body
   (match e
@@ -164,13 +165,13 @@
     [(NullC) (NullV)]
     [(MutateC id expr) 
      (store-set! id (interp expr env store) env store)]
-	[(RecC _ id a expr) 
-	 ; Create binding for id with value NullV
-	 (define extended-env (append (list (Binding id (allocate store (NullV)))) env))
-	 ; Update store value with interped value of a in extended env
-	 (store-set! id (interp a extended-env store) extended-env store)
-	 ; Interp expr in the new environment
-	 (interp expr extended-env store)]
+    [(RecC _ id a expr) 
+     ; Create binding for id with value NullV
+     (define extended-env (append (list (Binding id (allocate store (NullV)))) env))
+     ; Update store value with interped value of a in extended env
+     (store-set! id (interp a extended-env store) extended-env store)
+     ; Interp expr in the new environment
+     (interp expr extended-env store)]
     [(IfC v if-t if-f)
      (define test-val (interp v env store))
      (cond
@@ -344,7 +345,7 @@
         (cond
           [(and (natural? size) (>= size 1) (real? val))
            (define len (inexact->exact size))
-           ; Sets the address to the address after where this array will be stored
+           ;; Sets the address to the address after where this array will be stored
            (define arr (ArrayV (+ 1 (next-address store)) len))
            (allocate store arr)
            (allocate-lst store (for/list ([i (in-range len)]) val))
@@ -374,7 +375,7 @@
                   index
                   (ArrayV-size arr))]
           [else
-           ; Add the index to the array's address and return that value in the store
+           ;; Add the index to the array's address and return that value in the store
            (vector-ref store (assert (+ index (ArrayV-address arr)) natural?))])]
        [_ (error 'interp-prim "SHEQ: aref received incorrect number of arguments, expected 2, got ~a" (length args))])]
     ['aset!
@@ -402,7 +403,7 @@
           [(not (ArrayV? arr))
            (error 'interp-prim "SHEQ: alen expected an array, got ~a" arr)]
           [else (ArrayV-size arr)])]
-        [_ (error 'interp-prim "SHEQ: alen received incorrect number of arguments, expected 1, got ~a"
+       [_ (error 'interp-prim "SHEQ: alen received incorrect number of arguments, expected 1, got ~a"
                  (length args))])] 
     [_
      (error 'interp-prim "SHEQ: Invalid PrimV op, got ~a" p)]))
@@ -424,13 +425,13 @@
     [(MutateC id expr) (type-check expr tenv)]
     ;; IdC -> type of IdC
     [(IdC name) (get-type-binding name tenv)]
-	;; RecC -> type of expr
-	[(RecC ty id a expr) 
-	 (define extended-tenv (append (list (TypeBinding id ty)) tenv))
-	 (define a-ty (type-check a extended-tenv))
-	 (if (equal? a-ty ty)
-		 (type-check expr extended-tenv)
-		 (error 'typecheck "SHEQ: rlet ~a has mismatched type ~a expected ~a" id a-ty ty))]
+    ;; RecC -> type of expr
+    [(RecC ty id a expr) 
+     (define extended-tenv (append (list (TypeBinding id ty)) tenv))
+     (define a-ty (type-check a extended-tenv))
+     (if (equal? a-ty ty)
+         (type-check expr extended-tenv)
+         (error 'typecheck "SHEQ: rlet ~a has mismatched type ~a expected ~a" id a-ty ty))]
     ;; IfC -> type of then/else branches
     [(IfC v then else)
      (define cond-type (type-check v tenv))
@@ -477,7 +478,6 @@
 
 
 
-
 ;; ---- Parser ---- 
 ;; parse - takes a S-exp and returns concrete syntax in ExprC AST
 (define (parse [e : Sexp]) : ExprC
@@ -489,6 +489,7 @@
       [not reserved symbol -> idc]
       [list 'id ':= expr -> mutatec]
       [list 'let ... -> AppC(LamC)]
+      [list 'rlet ... -> RecC]
       [list 'if ... -> IfC]
       [list 'lambda ... -> LamC]
       [list f args -> AppC]
@@ -529,13 +530,13 @@
               (LamC args-list types (parse in-body)) 
               (for/list : (Listof ExprC) ([v vals]) 
                 (parse (cast v Sexp))))])]
-	;; Match Rlet
-	[(list 'rlet (list (list 
-						 ty 
-						 (? symbol? id)
-						 '=
-						 a)) 'in expr 'end)
-	  (RecC (parse-type ty) id (parse a) (parse expr))]
+    ;; Match Rlet
+    [(list 'rlet (list (list 
+                        ty 
+                        (? symbol? id)
+                        '=
+                        a)) 'in expr 'end)
+     (RecC (parse-type ty) id (parse a) (parse expr))]
     ;; Match If
     [(list 'if v iftrue iffalse)
      (IfC (parse v) (parse iftrue) (parse  iffalse))]
@@ -678,81 +679,6 @@
 
 
 ;; ---- Tests ----
-;; while : SHEQ implementation of the while loop
-(define while '{let {[while = "undefined"]}
-                 in
-                 {seq
-                  {while :=
-                         {lambda {guard body} :
-                           {if {guard}
-                               {seq
-                                {body}
-                                {while guard body}}
-                               null}}}
-                  ;; Test for while loop (commented out for Handin)
-                  #; {let {[x = 0]}
-                       in
-                       {seq
-                        {while
-                         {lambda (): {<= x 2}}
-                         {lambda () : 
-                           {seq
-                            {println {++ "" x}}
-                            {x := {+ x 1}}}}}
-                        x}
-                       end}
-                  while}
-                 end})
-
-;; Test for while (commented out for Handin)
-; (check-equal? (top-interp while) "3")
-
-; (check-equal? (top-interp while) "#<procedure>")
-
-
-
-;; in-order : accepts an array of numbers and its size, returns true if array is increasing order
-(define in-order
-  '{let {
-         ;; commented out while function for own tests
-         #; [while = "undefined"]
-         [in-order = "undefined"]
-         [not = {lambda (b) : {if b false true}}]
-         [and = {lambda (a b) : {if a b false}}]}
-     in
-     {seq
-      ;; commented out while function for own tests
-      #; {while :=
-                {lambda {guard body} :
-                  {if {guard}
-                      {seq
-                       {body}
-                       {while guard body}}
-                      null}}}
-      {in-order :=
-                {lambda (arr size) :
-                  {let {[i = 0]
-                        [result = true]}
-                    in
-                    {seq
-                     {while
-                      {lambda () :
-                        {and {<= i {- size 2}} result}}
-                      {lambda () :
-                        {if {<= {aref arr {+ i 1}} {aref arr i}}
-                            {result := false}
-                            {i := {+ i 1}}}}}
-                     result}
-                    end}}}
-      ;; Commented out test for Handin
-      #; {in-order {array 1 2 3} 3}
-      in-order}
-     end})
-
-;; Test for in-order (commented out for Handin)
-; (check-equal? (top-interp in-order) "true")
-; (check-equal? (top-interp in-order) "#<procedure>")
-
 
 ;; Large test
 ; The program calculates two areas using two different functions, and then compares them.
@@ -814,14 +740,20 @@
                               x}
                              end})  "\"changed\"")
 
-#; (check-equal? (top-interp '{let {[str fact = "bogus"]}
-                             in
-                             {seq
-                              {fact := {lambda {[num x]} : {if {num-eq? x 0} 1 {* x {fact {- x 1}}}}}}
-                              {fact 2}}
-                             end}) "2")
+;; - top-interp rlet
+(check-equal? (top-interp
+               '{rlet {[{num -> num} fact =
+                                     {lambda {[num n]} :
+                                       {if {<= n 1}
+                                           1
+                                           {* n {fact {- n 1}}}}}]}
+                      in
+                      {fact 5}
+                      end}) "120")
 
 
+;; - rlet incorrect typing
+(check-exn #rx"SHEQ: rlet" (lambda () (top-interp '{rlet {[{num -> num} f = "hi :)"]} in {+ 1 1} end})))
 
 
 
@@ -835,14 +767,6 @@
                        '{{lambda ([{num -> num} ignoreit]) : {ignoreit {/ 52 {+ 0 0}}}}
                          {lambda ([num x]) : {+ 7 x}}})))
 
-;; - rlet tests
-(check-equal? (top-interp
-               '{rlet {[{num -> num} fact = {lambda {[num n]} : {if {<= n 1} 1 {* n {fact {- n 1}}}}}]}
-                      in
-                      {fact 5}
-                      end}) "120")
-;; - rlet incorrect typing
-(check-exn #rx"SHEQ: rlet" (lambda () (top-interp '{rlet {[{num -> num} f = "hi :)"]} in {+ 1 1} end})))
 
 ;; ---- interp tests ----
 (define make-test-store (lambda () (make-initial-store 100))) ; (make-test-store) is a store for the tests below
@@ -931,8 +855,6 @@
 (check-equal? (serialize (PrimV '<=)) "#<primop>")
 (check-equal? (serialize (ArrayV 2 12)) "#<array>")
 (check-equal? (serialize (NullV)) "null")
-
-; (check-exn #rx"SHEQ: user-error true" (lambda () (interp-prim (PrimV 'error) (list #t) (make-test-store))))
 
 ;; ------- TYPE CHECKER TESTS -------
 
