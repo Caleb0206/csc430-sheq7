@@ -143,11 +143,10 @@
   ;; interp AST 
   (define store (make-initial-store 2000))
   (define env (make-default-env store))
-
-  ;; serialize
+  
   (serialize (interp expr env store)))
 
-;; interp - takes the complete AST (ExprC) with an Env, returning a Value
+;; interp - takes the complete AST (ExprC) with an Env and a Store (Vectorof Value), returning a Value
 (define (interp [e : ExprC] [env : Env] [store : (Vectorof Value)]) : Value
   ; template
   #;(match e
@@ -219,7 +218,7 @@
     [(list f) (interp f env store)]
     [(cons f rest) (begin (interp f env store) (interp-seq rest env store))]))
 
-;; interp-prim - takes a PrimV and a list of Values, returns a Value
+;; interp-prim - takes a PrimV, a list of Values and vector of Values, returns a Value
 (define (interp-prim [p : PrimV] [args : (Listof Value)] [store : (Vectorof Value)]) : Value
   (match (PrimV-op p)
     ['+
@@ -342,12 +341,12 @@
      (match args
        ['() ""]
        [_ (apply string-append (map val->string args))])]
-    ['make-array
+    ['make-array ;; only of numbers
      (match args
        [(list size val)
         (cond
           [(and (natural? size) (>= size 1) (real? val))
-           (define len (inexact->exact size))
+           (define len size)
            ;; Sets the address to the address after where this array will be stored
            (define arr (ArrayV (+ 1 (next-address store)) len))
            (allocate store arr)
