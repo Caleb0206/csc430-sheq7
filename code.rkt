@@ -2,7 +2,7 @@
 (require typed/rackunit)
 
 ;; SHEQ7
-;; Fully implemented SHEQ7.
+;; Fully implemented SHEQ7. (Submitted with aset! return type NullT on 11/21)
 
 ;; Data definitions
 
@@ -58,7 +58,7 @@
 (struct NullC () #:transparent)
 
 ;; Types - Number, Boolean, String, Array of Integers, Functions
-(define-type Type (U NumT BoolT StrT IntArrayT FunT))
+(define-type Type (U NumT BoolT StrT IntArrayT FunT NullT))
 
 ;; NumT - Number type
 (struct NumT () #:transparent)
@@ -71,6 +71,9 @@
 
 ;; IntArrayT - Integer Array type
 (struct IntArrayT () #:transparent)
+
+;; NullT - Null type
+(struct NullT () #:transparent)
 
 ;; FunT - Function type with arguments and return types
 (struct FunT ([args : (Listof Type)] [return : Type]) #:transparent)
@@ -123,7 +126,7 @@
                    (TypeBinding '++ (FunT (list (StrT) (StrT)) (StrT)))
                    (TypeBinding 'make-array (FunT (list (NumT) (NumT)) (IntArrayT)))
                    (TypeBinding 'aref (FunT (list (IntArrayT) (NumT)) (NumT)))
-                   (TypeBinding 'aset! (FunT (list (IntArrayT) (NumT) (NumT)) (IntArrayT)))
+                   (TypeBinding 'aset! (FunT (list (IntArrayT) (NumT) (NumT)) (NullT)))
                    (TypeBinding 'alen (FunT (list (IntArrayT)) (NumT)))))
 
 
@@ -865,6 +868,14 @@
 (check-equal? (type-check (IfC (IdC 'condition) (NumC 1) (NumC 0)) (list (TypeBinding 'condition (BoolT)))) (NumT))
 (check-equal? (type-check (LamC (list 'x) (list (NumT)) (NumC 0)) '())
               (FunT (list (NumT)) (NumT)))
+
+(check-equal? (type-check
+               (AppC (IdC 'aset!)
+                     (list (AppC (IdC 'make-array) (list (NumC 5) (NumC 1)))
+                           (NumC 0)
+                           (NumC 99)))
+               base-tenv)
+              (NullT))
 
 ;; - checks arity 
 (check-exn #rx"SHEQ: wrong number of arguments"
